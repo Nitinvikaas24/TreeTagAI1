@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .camera-container {
+    @apply relative w-full max-w-2xl mx-auto bg-white rounded-lg shadow-lg overflow-hidden;
+  }
+
+  .camera-view {
+    @apply relative aspect-video w-full bg-gray-900;
+  }
+
+  .camera-controls {
+    @apply flex items-center justify-center gap-4 p-4 bg-white;
+  }
+
+  .capture-btn {
+    @apply btn btn-primary flex items-center gap-2;
+  }
+
+  .switch-camera-btn {
+    @apply btn btn-secondary flex items-center gap-2;
+  }
+
+  .result-container {
+    @apply mt-4 p-4 bg-white rounded-lg shadow;
+  }
+
+  .plant-result-card {
+    @apply border rounded-lg p-4 mb-4 hover:shadow-md transition-shadow;
+  }
+
+  .confidence-badge {
+    @apply px-2 py-1 text-sm rounded-full;
+  }
+
+  .confidence-high {
+    @apply bg-green-100 text-green-800;
+  }
+
+  .confidence-medium {
+    @apply bg-yellow-100 text-yellow-800;
+  }
+
+  .confidence-low {
+    @apply bg-red-100 text-red-800;
+  }
+}
