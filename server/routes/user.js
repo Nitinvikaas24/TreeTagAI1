@@ -1,96 +1,25 @@
 import express from 'express';
-import { auth } from '../middleware/auth.js';
+// We use 'protect' from auth.js (ensure this matches your middleware file name)
+import { protect } from '../middleware/auth.js'; 
+// Import the REAL logic from your receipt controller
+import { getRecentReceipts } from '../controllers/receiptController.js';
 
 const router = express.Router();
 
 console.log('User routes module loaded');
 
-// Test route without auth
-router.get('/test', (req, res) => {
-    console.log('Test route hit');
-    res.json({ message: 'User routes are working' });
+// 1. Recent Purchases -> Connects to your REAL Blockchain Receipts
+// This allows the dashboard to show the invoices you just minted
+router.get('/purchases/recent', protect, getRecentReceipts);
+
+// 2. Wishlist (Placeholder - keeps dashboard happy)
+router.get('/wishlist', protect, (req, res) => {
+    res.json({ success: true, data: [] });
 });
 
-// Mock user data endpoints
-router.get('/purchases/recent', auth, (req, res) => {
-    try {
-        console.log('Recent purchases request from user:', req.user);
-        // Mock recent purchases
-        res.json({
-            success: true,
-            data: [
-                {
-                    _id: 1,
-                    plant: {
-                        name: 'Rose',
-                        image: '/uploads/rose.jpg'
-                    },
-                    quantity: 2,
-                    amount: 25.50,
-                    date: new Date().toISOString()
-                },
-                {
-                    _id: 2,
-                    plant: {
-                        name: 'Tulip',
-                        image: '/uploads/tulip.jpg'
-                    },
-                    quantity: 5,
-                    amount: 15.00,
-                    date: new Date().toISOString()
-                }
-            ]
-        });
-    } catch (error) {
-        console.error('Error in /purchases/recent:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-router.get('/wishlist', auth, (req, res) => {
-    // Mock wishlist
-    res.json({
-        success: true,
-        data: [
-            {
-                _id: 1,
-                name: 'Orchid',
-                category: 'Flowering Plant',
-                price: 45.00,
-                image: '/uploads/orchid.jpg'
-            },
-            {
-                _id: 2,
-                name: 'Cactus',
-                category: 'Succulent',
-                price: 12.00,
-                image: '/uploads/cactus.jpg'
-            }
-        ]
-    });
-});
-
-router.get('/suggestions', auth, (req, res) => {
-    // Mock plant suggestions
-    res.json({
-        success: true,
-        data: [
-            {
-                _id: 1,
-                name: 'Sunflower',
-                category: 'Flowering Plant',
-                price: 8.50,
-                image: '/uploads/sunflower.jpg'
-            },
-            {
-                _id: 2,
-                name: 'Peace Lily',
-                category: 'Air Purifier',
-                price: 22.00,
-                image: '/uploads/peace-lily.jpg'
-            }
-        ]
-    });
+// 3. Suggestions (Placeholder - keeps dashboard happy)
+router.get('/suggestions', protect, (req, res) => {
+    res.json({ success: true, data: [] });
 });
 
 export default router;

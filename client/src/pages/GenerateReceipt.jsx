@@ -1,237 +1,171 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
-import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
-
-// --- Utility Function to Trigger Download ---
-const triggerPdfDownload = (base64Data, receiptId) => {
-    try {
-        const binaryString = atob(base64Data);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
-        
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-        const link = document.createElement('a');
-        link.href = window.URL.createObjectURL(blob);
-        link.download = `receipt_${receiptId}.pdf` || 'receipt.pdf';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    } catch (error) {
-        console.error('PDF Download Error:', error);
-        toast.error('Failed to download PDF. Data may be corrupt.');
-    }
-};
-
-const TAX_RATE = 0.05; 
+import toast from 'react-hot-toast';
 
 export default function GenerateReceipt() {
     const navigate = useNavigate();
     const { user, token } = useAuth();
-    
-    const { cartItems: allItems, updateItemQuantity, removeFromCart, clearCart } = useCart();
-    
-    // Fix for the infinite loop
-    const cartItems = useMemo(() => {
-        return allItems.filter(item => item && item.id && item.common_names);
-    }, [allItems]);
+    const { cartItems, clearCart } = useCart();
     
     const [loading, setLoading] = useState(false);
-    const [editedPrices, setEditedPrices] = useState({});
-
-    // This useEffect is now safe because 'cartItems' is stable
-    useEffect(() => {
-        setEditedPrices(Object.fromEntries(
-            cartItems.map(item => [item.id, item.price_default]) 
-        ));
-    }, [cartItems]);
-
-    // Calculate totals
-    const subtotal = cartItems.reduce((sum, item) => 
-        sum + ((editedPrices[item.id] || item.price_default || 0) * (item.quantity || 1)), 0
-    );
-    const tax = subtotal * TAX_RATE;
-    const total = subtotal + tax;
-
-    const handleQuantityChange = (itemId, newQuantity) => {
-        const quantity = Math.max(1, parseInt(newQuantity) || 1);
-        updateItemQuantity(itemId, quantity);
-    };
-
-    const handlePriceChange = (itemId, newPrice) => {
-        const price = Math.max(0, parseFloat(newPrice) || 0);
-        setEditedPrices(prev => ({ ...prev, [itemId]: price }));
-    };
+    const [customerName, setCustomerName] = useState('');
+    
+    // Get today's date for preview
+    const today = new Date().toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric'
+    });
+    
+    // Calculate Total
+    const total = cartItems.reduce((sum, item) => sum + ((item.price_default || 0) * (item.quantity || 1)), 0);
 
     const handleGenerateInvoice = async () => {
-        if (!user || !token) { 
-            toast.error('You must be logged in to make a sale.');
-            return;
-        }
+        if (!user) return toast.error('Please login first');
+        if (!customerName) return toast.error('Please enter customer name');
 
         setLoading(true);
-        
-        const cartData = {
-            farmerId: user.id || 'user-123',
-            farmerName: user.fullName || 'Test User',
-            farmerPhone: user.phone || '555-5555',
-            items: cartItems.map(item => {
-                const price = editedPrices[item.id] || item.price_default || 0;
-                const quantity = item.quantity || 1;
-                return {
-                    id: item.id,
-                    plantName: (item.common_names && item.common_names[0]) ? item.common_names[0] : 'Unknown Plant',
-                    scientificName: item.scientific_name || 'N/A',
-                    price: price,
-                    quantity: quantity,
-                    subtotal: price * quantity
-                }
-            }),
-            total,
-            tax,
-            language: 'en',
-        };
-
         try {
+            // DATA STRUCTURE MATCHING BACKEND
+            const saleData = {
+                farmerId: user.farmerId || user.id,
+                customerName: customerName,
+                // We send 'plants' array with 'plantId'
+                plants: cartItems.map(item => ({
+                    plantId: item.id,
+                    quantity: item.quantity || 1
+                }))
+            };
+
             const response = await fetch('/api/v1/receipts', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}` 
+                    'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify(cartData),
+                body: JSON.stringify(saleData)
             });
 
             const result = await response.json();
+            if (!response.ok) throw new Error(result.message || 'Transaction Failed');
 
-            if (!response.ok) {
-                throw new Error(result.message || 'Sale failed');
-            }
-
-            console.log('Sale created:', result);
+            toast.success('Invoice Minted on Blockchain!');
             
-            if (result.pdfBase64) {
-                triggerPdfDownload(result.pdfBase64, result._id);
+            // Open PDF
+            if(result.data && result.data.pdfUrl) {
+                // Remove /api if needed depending on your proxy setup, usually relative path works
+                window.open(result.data.pdfUrl, '_blank');
             }
-
+            
             clearCart();
-            toast.success('Receipt generated successfully!');
-            
-            navigate('/user/receipt', { 
-                state: { 
-                    receiptId: result._id,
-                    receiptData: { ...result, ...cartData, receiptNo: result._id }
-                }
-            });
+            navigate('/user/receipt');
 
         } catch (error) {
-            console.error('Failed to generate invoice:', error);
-            toast.error(`Failed: ${error.message}`);
+            console.error(error);
+            toast.error(error.message || 'Error creating invoice');
         } finally {
             setLoading(false);
         }
     };
 
-    if (cartItems.length === 0) {
-        return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-                <div className="max-w-3xl mx-auto text-center bg-white rounded-lg shadow-md p-8">
-                    <h1 className="text-2xl font-semibold text-gray-900 mb-4">Your Cart is Empty</h1>
-                    <p className="text-gray-600 mb-4">Please identify a plant to add it to your cart.</p>
-                    <button
-                        onClick={() => navigate('/user/identify')}
-                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-                    >
-                        Scan a Plant
-                    </button>
-                </div>
+    if (cartItems.length === 0) return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="bg-white p-8 rounded shadow text-center">
+                <h2 className="text-xl font-bold mb-4">Cart Empty</h2>
+                <button onClick={() => navigate('/user/identify')} className="text-green-600 hover:underline">Identify Plants</button>
             </div>
-        );
-    }
+        </div>
+    );
 
     return (
-        <div className="min-h-screen bg-gray-50 p-6">
-            <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-8">
-                <div className="flex justify-between items-center mb-6">
-                    <h1 className="text-2xl font-semibold text-gray-900">Generate Receipt</h1>
-                    <button onClick={() => navigate(-1)} className="text-gray-600 hover:text-gray-900">← Back</button>
-                </div>
-
-                <div className="mb-8 overflow-x-auto">
-                    <table className="w-full">
-                        <thead>
-                            <tr className="border-b-2 border-gray-200">
-                                <th className="text-left py-3">Plant</th>
-                                <th className="text-center py-3">Quantity</th>
-                                <th className="text-center py-3">Unit Price</th>
-                                <th className="text-right py-3">Subtotal</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {cartItems.map((item) => {
-                                const price = editedPrices[item.id] || item.price_default || 0;
-                                const quantity = item.quantity || 1;
-                                
-                                return (
-                                    <tr key={item.id} className="border-b border-gray-100">
-                                        <td className="py-4">
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <div className="font-medium">{item.common_names ? item.common_names[0] : 'Unknown Plant'}</div>
-                                                    <div className="text-sm text-gray-500">{item.scientific_name || 'N/A'}</div>
-                                                </div>
-                                                <button onClick={() => removeFromCart(item.id)} className="text-sm text-red-600 hover:text-red-800">Remove</button>
-                                            </div>
-                                        </td>
-                                        <td className="py-4 text-center">
-                                            <input
-                                                type="number" min="1" value={quantity}
-                                                onChange={(e) => handleQuantityChange(item.id, e.target.value)}
-                                                className="w-20 text-center p-1 border rounded"
-                                            />
-                                        </td>
-                                        <td className="py-4 text-center">
-                                            <div className="flex items-center justify-center">
-                                                <span>₹</span>
-                                                <input
-                                                    type="number" min="0" step="0.01" value={price}
-                                                    onChange={(e) => handlePriceChange(item.id, e.target.value)}
-                                                    className="w-24 text-center p-1 border rounded"
-                                                />
-                                            </div>
-                                        </td>
-                                        <td className="py-4 text-right">₹{(price * quantity).toFixed(2)}</td>
-                                    </tr>
-                                )
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-
-                {/* Totals */}
-                <div className="border-t border-gray-200 pt-4">
-                    <div className="flex justify-end text-right">
-                        <div className="w-64">
-                            <div className="flex justify-between py-2"><span className="text-gray-600">Subtotal:</span><span className="font-medium">₹{subtotal.toFixed(2)}</span></div>
-                            <div className="flex justify-between py-2"><span className="text-gray-600">Tax ({(TAX_RATE * 100)}%):</span><span className="font-medium">₹{tax.toFixed(2)}</span></div>
-                            <div className="flex justify-between py-2 text-lg font-semibold"><span>Total:</span><span>₹{total.toFixed(2)}</span></div>
-                        </div>
+        <div className="min-h-screen bg-gray-100 py-8 px-4 font-sans">
+            <div className="max-w-6xl mx-auto md:flex md:gap-8">
+                
+                {/* LEFT: Controls */}
+                <div className="md:w-1/3 space-y-6">
+                    <div className="bg-white p-6 rounded-lg shadow-sm">
+                        <h2 className="text-lg font-bold mb-4">Customer Details</h2>
+                        <input 
+                            type="text" 
+                            className="w-full border p-3 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
+                            placeholder="Bill To Name"
+                            value={customerName}
+                            onChange={(e) => setCustomerName(e.target.value)}
+                            autoFocus
+                        />
+                    </div>
+                    
+                    <div className="bg-green-50 p-6 rounded-lg border border-green-200">
+                        <h3 className="text-green-900 font-bold flex items-center gap-2">
+                            <span>🛡️</span> Blockchain Secured
+                        </h3>
+                        <p className="text-sm text-green-800 mt-2">
+                            Transaction will be hashed (SHA-256) and minted as a Digital Passport on the Hortus Chain.
+                        </p>
                     </div>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="mt-8 flex justify-end gap-4">
-                    <button onClick={() => clearCart()} className="px-4 py-2 text-red-600 hover:text-red-700">Clear Cart</button>
-                    <button
-                        onClick={handleGenerateInvoice} disabled={loading || cartItems.length === 0}
-                        className={`px-6 py-2 rounded-md ${loading || cartItems.length === 0 ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white font-medium`}
-                    >
-                        {loading ? 'Generating...' : 'Confirm & Generate Receipt'}
-                    </button>
+                {/* RIGHT: Live Preview */}
+                <div className="md:w-2/3 bg-white rounded-lg shadow-xl overflow-hidden flex flex-col min-h-[500px]">
+                    <div className="bg-slate-800 text-white p-8">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <h1 className="text-3xl font-bold">INVOICE</h1>
+                                <p className="text-xs text-slate-400 mt-1"># PREVIEW-DRAFT</p>
+                            </div>
+                            <div className="text-right">
+                                <h2 className="text-xl font-semibold">Hortus Billing</h2>
+                                <p className="text-sm text-slate-400">Authentic Nursery Partner</p>
+                            </div>
+                        </div>
+                        <div className="mt-8 flex justify-between border-t border-slate-700 pt-4">
+                            <div>
+                                <p className="text-xs text-slate-400 uppercase">Bill To</p>
+                                <p className="font-medium text-lg">{customerName || '...'}</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-xs text-slate-400 uppercase">Date</p>
+                                <p className="font-medium">{today}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-8 flex-grow">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="border-b border-gray-200 text-gray-500 text-sm">
+                                    <th className="py-2">Item</th>
+                                    <th className="py-2 text-center">Qty</th>
+                                    <th className="py-2 text-right">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {cartItems.map(item => (
+                                    <tr key={item.id} className="border-b border-gray-100">
+                                        <td className="py-4">
+                                            <div className="font-medium">{item.common_names?.[0] || 'Plant'}</div>
+                                            <div className="text-xs text-gray-500">{item.scientific_name}</div>
+                                        </td>
+                                        <td className="py-4 text-center">{item.quantity}</td>
+                                        <td className="py-4 text-right">₹{(item.price_default * item.quantity).toFixed(2)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="bg-gray-50 p-6 flex justify-between items-center">
+                        <div className="text-xl font-bold text-gray-800">
+                            Total: ₹{total.toFixed(2)}
+                        </div>
+                        <button 
+                            onClick={handleGenerateInvoice}
+                            disabled={loading}
+                            className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 font-medium disabled:opacity-50"
+                        >
+                            {loading ? 'Minting...' : 'Authenticate & Issue Invoice'}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

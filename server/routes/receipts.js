@@ -1,19 +1,15 @@
 import express from 'express';
-import { createReceipt } from '../services/receiptService.js';
+import { createReceipt, getReceipt, getAllReceipts } from '../controllers/receiptController.js';
 import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// POST / - create a receipt from cart data (mock)
-router.post('/', protect, async (req, res) => {
-  try {
-    const cartData = req.body;
-    const result = await createReceipt(cartData);
-    return res.status(201).json(result);
-  } catch (err) {
-    console.error('Create receipt error:', err);
-    return res.status(500).json({ error: 'Failed to create receipt' });
-  }
-});
+// --- THE FIX ---
+// We now point directly to the Controller which has the Blockchain Logic
+router.post('/', protect, createReceipt);
+
+// We also add these so your Dashboard History works
+router.get('/', protect, getAllReceipts);
+router.get('/:id', protect, getReceipt);
 
 export default router;

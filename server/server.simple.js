@@ -2,9 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import path from 'path'; // Needed for PDFs
+import { fileURLToPath } from 'url'; // Needed for PDFs
 import Plant from './models/plant.js';
 
 dotenv.config();
+
+// --- PATH SETUP FOR PDFS ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 console.log("--- Loading Gemma Key:", process.env.GEMMA_API_KEY);
 
 const connectDB = async () => {
@@ -30,11 +37,9 @@ const seedDatabase = async () => {
       });
       await mango.save();
       console.log('Database seeded with Mango plant.');
-    } else {
-      console.log('Database already contains data.');
     }
   } catch (error) {
-    console.error('Error seeding database:', error.message);
+    console.log('Database already initialized');
   }
 };
 
@@ -42,28 +47,34 @@ connectDB();
 
 const app = express();
 
-// Import routes
+// --- IMPORT ROUTES ---
 import identifyRouter from './routes/identify.js';
 import receiptsRouter from './routes/receipts.js';
 import plantsRouter from './routes/plants.js';
 import searchRouter from './routes/search.js';
 import authRouter from './routes/auth.js';
+import userRouter from './routes/user.js'; // <--- THIS WAS MISSING
 
-// Middleware
+// --- MIDDLEWARE ---
 app.use(cors());
 app.use(express.json());
 
-// Health endpoint
-app.get('/api/v1/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
+// --- SERVE STATIC PDFS ---
+// This allows the "View Invoice" button to work
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Mount routers
+// --- MOUNT ROUTERS ---
+app.get('/api/v1/health', (req, res) => res.json({ status: 'ok' }));
+
 app.use('/api/v1/identify', identifyRouter);
 app.use('/api/v1/receipts', receiptsRouter);
 app.use('/api/v1/plants', plantsRouter);
 app.use('/api/v1/search', searchRouter);
 app.use('/api/v1/auth', authRouter);
+
+// --- CONNECT USER DASHBOARD ---
+// We mount it at /api/user because that's where your frontend is looking
+app.use('/api/user', userRouter); 
 
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
