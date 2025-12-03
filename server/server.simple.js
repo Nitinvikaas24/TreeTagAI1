@@ -2,13 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
-import path from 'path'; // Needed for PDFs
-import { fileURLToPath } from 'url'; // Needed for PDFs
+import path from 'path';
+import { fileURLToPath } from 'url';
 import Plant from './models/plant.js';
 
 dotenv.config();
 
-// --- PATH SETUP FOR PDFS ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -53,14 +52,14 @@ import receiptsRouter from './routes/receipts.js';
 import plantsRouter from './routes/plants.js';
 import searchRouter from './routes/search.js';
 import authRouter from './routes/auth.js';
-import userRouter from './routes/user.js'; // <--- THIS WAS MISSING
+import userRouter from './routes/user.js';
+import translationsRouter from './routes/translations.js'; // <--- NEW IMPORT
 
 // --- MIDDLEWARE ---
 app.use(cors());
 app.use(express.json());
 
 // --- SERVE STATIC PDFS ---
-// This allows the "View Invoice" button to work
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // --- MOUNT ROUTERS ---
@@ -72,9 +71,11 @@ app.use('/api/v1/plants', plantsRouter);
 app.use('/api/v1/search', searchRouter);
 app.use('/api/v1/auth', authRouter);
 
-// --- CONNECT USER DASHBOARD ---
-// We mount it at /api/user because that's where your frontend is looking
-app.use('/api/user', userRouter); 
+// User Dashboard Route
+app.use('/api/user', userRouter);
+
+// --- NEW: Translation Route (Fixes Language Selector) ---
+app.use('/api/translations', translationsRouter); 
 
 const port = process.env.PORT || 3001;
 app.listen(port, () => {

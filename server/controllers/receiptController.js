@@ -1,19 +1,56 @@
 import Receipt from '../models/Receipt.js';
-import User from '../models/user.js'; // Ensure file casing matches your folder (user.js)
-import Plant from '../models/plant.js'; // Ensure file casing matches your folder (plant.js)
+import User from '../models/user.js'; 
+import Plant from '../models/plant.js'; 
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto'; // <--- CRITICAL IMPORT
+import crypto from 'crypto'; 
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// --- TRANSLATION DICTIONARY ---
+// Simple, fast lookups for PDF labels.
+const TRANSLATIONS = {
+    en: { 
+        title: "INVOICE", 
+        billTo: "Bill To", 
+        date: "Date", 
+        item: "Item", 
+        qty: "Qty", 
+        price: "Price",
+        total: "Total", 
+        badge: "VERIFIED ON HORTUS CHAIN" 
+    },
+    // Tamil (Transliterated/Simplified for PDFKit compatibility without custom fonts)
+    ta: { 
+        title: "INVOICE (Rasidhu)", 
+        billTo: "Perunar (Bill To)", 
+        date: "Thethi", 
+        item: "Porul", 
+        qty: "Alavu", 
+        price: "Vilai",
+        total: "Motham", 
+        badge: "HORTUS CHAIN - VERIFIED" 
+    },
+    // Hindi (Transliterated)
+    hi: { 
+        title: "INVOICE (Chalan)", 
+        billTo: "Grahak", 
+        date: "Dinaank", 
+        item: "Vastu", 
+        qty: "Matra", 
+        price: "Daam",
+        total: "Kul Yog", 
+        badge: "HORTUS CHAIN - VERIFIED" 
+    }
+};
+
 export const createReceipt = async (req, res) => {
   try {
     // 1. Get Data
-    const { farmerId, customerName } = req.body;
+    const { farmerId, customerName, language } = req.body; // <--- Now accepting 'language'
     
     // COMPATIBILITY: Look for 'plants' (New) or 'items' (Old)
     const itemsToProcess = req.body.plants || req.body.items;
@@ -33,17 +70,14 @@ export const createReceipt = async (req, res) => {
     const receiptItems = [];
 
     for (const item of itemsToProcess) {
-      // COMPATIBILITY: Look for 'plantId' or 'id'
       const idToFind = item.plantId || item.id;
-      
       const plant = await Plant.findById(idToFind);
       if (!plant) throw new Error(`Plant ${idToFind} not found`);
       
       const qty = item.quantity || 1;
       
-      // Stock Check (Handles 'stock' or 'availableQuantity')
+      // Stock Check 
       const currentStock = plant.stock !== undefined ? plant.stock : plant.availableQuantity;
-      
       if (currentStock < qty) { 
         throw new Error(`Insufficient stock for ${plant.common_names?.[0] || plant.name}`);
       }
@@ -55,23 +89,19 @@ export const createReceipt = async (req, res) => {
       
       receiptItems.push({
         plant: plant._id,
-        name: plant.common_names?.[0] || plant.scientific_name || plant.name || "Unknown",
+        name: plant.common_names?.[0] || plant.scientific_name || "Unknown",
         quantity: qty,
         pricePerUnit: price,
         total: itemTotal
       });
 
       // Deduct Stock
-      if (plant.stock !== undefined) {
-          plant.stock -= qty;
-      } else if (plant.availableQuantity !== undefined) {
-          plant.availableQuantity -= qty;
-      }
+      if (plant.stock !== undefined) plant.stock -= qty;
+      else if (plant.availableQuantity !== undefined) plant.availableQuantity -= qty;
       await plant.save();
     }
 
     // 3. GENERATE BLOCKCHAIN HASH
-    // We create a unique signature based on: Seller + Time + Total + Items
     const dataString = `${farmerId}-${Date.now()}-${totalAmount}-${JSON.stringify(receiptItems)}`;
     const blockchainHash = crypto.createHash('sha256').update(dataString).digest('hex');
     const digitalPassportId = `HORTUS-${blockchainHash.substring(0, 8).toUpperCase()}`;
@@ -87,7 +117,7 @@ export const createReceipt = async (req, res) => {
       blockchainHash,
       digitalPassportId,
       verificationUrl: `https://hortus-chain.io/verify/${blockchainHash}`,
-      language: farmer.preferredLanguage || 'en'
+      language: language || farmer.preferredLanguage || 'en' // <--- Save the language
     });
 
     // 5. Generate Professional PDF
@@ -105,7 +135,7 @@ export const createReceipt = async (req, res) => {
   }
 };
 
-// --- PDF GENERATOR (PRO STYLE) ---
+// --- PDF GENERATOR (WITH TRANSLATION) ---
 export const generatePDF = async (receiptId) => {
   const receipt = await Receipt.findById(receiptId).populate('farmer');
   
@@ -113,40 +143,59 @@ export const generatePDF = async (receiptId) => {
   const fileName = `Invoice-${receipt.receiptNumber}.pdf`;
   const filePath = path.join(__dirname, '..', 'uploads', 'receipts', fileName);
   
-  // Ensure directory exists
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const writeStream = fs.createWriteStream(filePath);
   doc.pipe(writeStream);
 
-  // Header
+  // --- 1. DETERMINE LANGUAGE ---
+  const langCode = receipt.language || 'en';
+  const t = TRANSLATIONS[langCode] || TRANSLATIONS['en'];
+
+  // --- 2. HEADER ---
   doc.fillColor('#444444').fontSize(20).text('HORTUS BILLING', 110, 57)
      .fontSize(10).text('Hortus Billing', 200, 65, { align: 'right' })
      .text('Authorized Nursery Partner', 200, 80, { align: 'right' })
      .moveDown();
 
-  // Invoice Info
-  doc.fillColor("#000000").fontSize(20).text(`INVOICE`, 50, 130);
-  doc.fontSize(10).text(`Invoice Number: ${receipt.receiptNumber}`, 50, 160)
-     .text(`Date: ${receipt.createdAt.toLocaleDateString()}`, 50, 175)
-     .text(`Bill To: ${receipt.customerName}`, 300, 160);
+  // --- 3. INVOICE INFO (Translated) ---
+  doc.fillColor("#000000").fontSize(20).text(t.title, 50, 130);
+  
+  doc.fontSize(10).text(`Invoice #: ${receipt.receiptNumber}`, 50, 160)
+     .text(`${t.date}: ${receipt.createdAt.toLocaleDateString()}`, 50, 175)
+     .text(`${t.billTo}: ${receipt.customerName}`, 300, 160);
 
-  // Table
+  // --- 4. TABLE HEADERS (Translated) ---
   const tableTop = 250;
-  doc.font("Helvetica-Bold").text("Item", 50, tableTop).text("Qty", 280, tableTop).text("Total", 470, tableTop);
+  doc.font("Helvetica-Bold")
+     .text(t.item, 50, tableTop)
+     .text(t.qty, 280, tableTop)
+     .text(t.price, 370, tableTop, { width: 90, align: "right" })
+     .text(t.total, 470, tableTop, { width: 90, align: "right" });
+
   doc.strokeColor("#aaaaaa").lineWidth(1).moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
 
+  // --- 5. ITEMS ---
   let i = 0;
   doc.font("Helvetica");
   receipt.items.forEach(item => {
     const y = tableTop + 30 + (i * 30);
-    doc.text(item.name, 50, y).text(item.quantity.toString(), 280, y).text(item.total.toFixed(2), 470, y);
+    doc.text(item.name, 50, y)
+       .text(item.quantity.toString(), 280, y)
+       .text(item.pricePerUnit.toFixed(2), 370, y, { width: 90, align: "right" })
+       .text(item.total.toFixed(2), 470, y, { width: 90, align: "right" });
     i++;
   });
 
-  // Blockchain Badge (The Green Box)
-  const bottomY = tableTop + 30 + (i * 30) + 60;
+  // --- 6. TOTALS (Translated) ---
+  const subtotalPosition = tableTop + 30 + (i * 30) + 20;
+  doc.font("Helvetica-Bold");
+  doc.text(`${t.total}:`, 370, subtotalPosition, { width: 90, align: "right" });
+  doc.text(receipt.totalAmount.toFixed(2), 470, subtotalPosition, { width: 90, align: "right" });
+
+  // --- 7. BLOCKCHAIN BADGE ---
+  const bottomY = subtotalPosition + 60;
   doc.rect(50, bottomY, 500, 60).fillAndStroke("#f0fdf4", "#166534");
-  doc.fillColor("#166534").fontSize(12).text("VERIFIED ON HORTUS CHAIN", 70, bottomY + 20);
+  doc.fillColor("#166534").fontSize(12).text(t.badge, 70, bottomY + 20);
   doc.fillColor("#000000").fontSize(8).text(`Hash: ${receipt.blockchainHash}`, 70, bottomY + 40);
   doc.text(`Digital ID: ${receipt.digitalPassportId}`, 70, bottomY + 52);
 
@@ -156,7 +205,20 @@ export const generatePDF = async (receiptId) => {
   await receipt.save();
 };
 
-// --- GET FUNCTIONS (Preserved) ---
+// --- GET FUNCTIONS ---
+export const getRecentReceipts = async (req, res) => {
+    try {
+        const receipts = await Receipt.find({ farmer: req.user.id })
+            .populate('items.plant') 
+            .sort({ createdAt: -1 })
+            .limit(10);
+        res.status(200).json({ status: 'success', data: receipts });
+    } catch (e) { 
+        console.error("Dashboard Error:", e);
+        res.status(500).json({ message: e.message }); 
+    }
+};
+
 export const getReceipt = async (req, res) => {
     try {
         const receipt = await Receipt.findById(req.params.id).populate('farmer').populate('items.plant');
@@ -167,20 +229,11 @@ export const getReceipt = async (req, res) => {
 
 export const getAllReceipts = async (req, res) => {
     try {
-        const receipts = await Receipt.find().populate('farmer').sort({ createdAt: -1 });
-        res.status(200).json({ status: 'success', data: receipts });
-    } catch (e) { res.status(500).json({ message: e.message }); }
-};
-
-export const getRecentReceipts = async (req, res) => {
-    // Simplified for brevity - add date logic if needed
-    try {
-        const receipts = await Receipt.find().sort({ createdAt: -1 }).limit(5);
+        const receipts = await Receipt.find({ farmer: req.user.id }).populate('farmer').sort({ createdAt: -1 });
         res.status(200).json({ status: 'success', data: receipts });
     } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
 export const getReceiptsByDateRange = async (req, res) => {
-    // Placeholder implementation
     res.status(200).json({ status: 'success', data: [] });
 };

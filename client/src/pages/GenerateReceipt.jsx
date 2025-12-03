@@ -28,14 +28,15 @@ export default function GenerateReceipt() {
         try {
             // DATA STRUCTURE MATCHING BACKEND
             const saleData = {
-                farmerId: user.farmerId || user.id,
-                customerName: customerName,
-                // We send 'plants' array with 'plantId'
-                plants: cartItems.map(item => ({
-                    plantId: item.id,
-                    quantity: item.quantity || 1
-                }))
-            };
+    farmerId: user.farmerId || user.id,
+    customerName: customerName,
+    // --- NEW: Send Selected Language ---
+    language: localStorage.getItem('treetag-language') || 'en', 
+    plants: cartItems.map(item => ({
+        plantId: item.id,
+        quantity: item.quantity || 1
+    }))
+};
 
             const response = await fetch('/api/v1/receipts', {
                 method: 'POST',

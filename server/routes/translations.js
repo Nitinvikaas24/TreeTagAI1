@@ -1,5 +1,6 @@
 import express from 'express';
-import { authenticate } from '../middleware/auth.js';
+// --- FIX: Import 'protect' instead of 'authenticate' ---
+import { protect } from '../middleware/auth.js'; 
 import { TranslationService } from '../services/translationService.js';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '../config/languages.js';
 
@@ -9,27 +10,11 @@ const translationService = new TranslationService();
 /**
  * @swagger
  * /api/translations/plant:
- *   post:
- *     summary: Translate plant information to a target language
- *     tags: [Translations]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               plantInfo:
- *                 type: object
- *               targetLang:
- *                 type: string
- *     responses:
- *       200:
- *         description: Translated plant information
+ * post:
+ * summary: Translate plant information to a target language
  */
-router.post('/plant', authenticate, async (req, res, next) => {
+// --- FIX: Use 'protect' here ---
+router.post('/plant', protect, async (req, res, next) => {
     try {
         const { plantInfo, targetLang } = req.body;
 
@@ -64,12 +49,8 @@ router.post('/plant', authenticate, async (req, res, next) => {
 /**
  * @swagger
  * /api/translations/languages:
- *   get:
- *     summary: Get list of supported languages
- *     tags: [Translations]
- *     responses:
- *       200:
- *         description: List of supported languages
+ * get:
+ * summary: Get list of supported languages
  */
 router.get('/languages', (req, res) => {
     res.json({
@@ -82,32 +63,11 @@ router.get('/languages', (req, res) => {
 /**
  * @swagger
  * /api/translations/verified:
- *   get:
- *     summary: Get verified translations for a specific context
- *     tags: [Translations]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: sourceLang
- *         required: true
- *         schema:
- *           type: string
- *       - in: query
- *         name: targetLang
- *         required: true
- *         schema:
- *           type: string
- *       - in: query
- *         name: context
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: List of verified translations
+ * get:
+ * summary: Get verified translations for a specific context
  */
-router.get('/verified', authenticate, async (req, res, next) => {
+// --- FIX: Use 'protect' here ---
+router.get('/verified', protect, async (req, res, next) => {
     try {
         const { sourceLang, targetLang, context } = req.query;
         
@@ -136,33 +96,11 @@ router.get('/verified', authenticate, async (req, res, next) => {
 /**
  * @swagger
  * /api/translations/verify:
- *   post:
- *     summary: Add or update a verified translation
- *     tags: [Translations]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               sourceText:
- *                 type: string
- *               translatedText:
- *                 type: string
- *               sourceLang:
- *                 type: string
- *               targetLang:
- *                 type: string
- *               context:
- *                 type: string
- *     responses:
- *       200:
- *         description: Translation verified successfully
+ * post:
+ * summary: Add or update a verified translation
  */
-router.post('/verify', authenticate, async (req, res, next) => {
+// --- FIX: Use 'protect' here ---
+router.post('/verify', protect, async (req, res, next) => {
     try {
         const { sourceText, translatedText, sourceLang, targetLang, context } = req.body;
 

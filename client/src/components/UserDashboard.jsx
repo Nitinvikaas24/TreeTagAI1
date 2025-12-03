@@ -1,333 +1,196 @@
 import React, { useState, useEffect } from 'react';
-import { FaLeaf, FaHistory, FaHeart, FaCamera } from 'react-icons/fa';
-import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
+import { 
+    FaFileInvoiceDollar, 
+    FaLeaf, 
+    FaChartLine, 
+    FaDownload, 
+    FaSearch 
+} from 'react-icons/fa';
 
-const UserDashboard = () => {
-    const [recentPurchases, setRecentPurchases] = useState([]);
-    const [wishlist, setWishlist] = useState([]);
-    const [plantSuggestions, setPlantSuggestions] = useState([]);
-    const { token } = useAuth();
+export default function UserDashboard() {
+    const { user, token } = useAuth();
     const navigate = useNavigate();
+    
+    const [stats, setStats] = useState({ totalSales: 0, invoiceCount: 0 });
+    const [invoices, setInvoices] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetchUserData();
-    }, []);
+        if (user && token) {
+            fetchDashboardData();
+        }
+    }, [user, token]);
 
-    const fetchUserData = async () => {
+    const fetchDashboardData = async () => {
         try {
-            // Get token with multiple fallback methods
-            const authToken = token || 
-                            localStorage.getItem('token') || 
-                            localStorage.getItem('authToken') ||
-                            user?.token;
-            
-            console.log('🔍 Fetching user data with token:', authToken ? 'Token found' : 'No token');
-            console.log('🌐 API Base URL check:', window.location.origin);
-            
-            // Always try API first, even without token (for debugging)
-            console.log('📡 Making API calls to:', {
-                purchases: '/api/user/purchases/recent',
-                wishlist: '/api/user/wishlist', 
-                suggestions: '/api/user/suggestions'
+            // Fetch Real Blockchain Receipts from your new endpoint
+            const response = await fetch('/api/user/purchases/recent', {
+                headers: { 'Authorization': `Bearer ${token}` }
             });
+            const result = await response.json();
 
-            if (!authToken) {
-                console.warn('No authentication token available, using mock data');
-                // Use mock data instead
-                setRecentPurchases([
-                    {
-                        _id: 1,
-                        plant: {
-                            name: 'Rose',
-                            image: '/uploads/rose.jpg'
-                        },
-                        quantity: 2,
-                        amount: 25.50,
-                        date: new Date().toISOString()
-                    }
-                ]);
-                setWishlist([
-                    {
-                        _id: 1,
-                        name: 'Orchid',
-                        category: 'Flowering Plant',
-                        price: 45.00,
-                        image: '/uploads/orchid.jpg'
-                    }
-                ]);
-                setPlantSuggestions([
-                    {
-                        _id: 1,
-                        name: 'Sunflower',
-                        category: 'Flowering Plant',
-                        price: 8.50,
-                        image: '/uploads/sunflower.jpg'
-                    }
-                ]);
-                return;
+            // Handle successful data fetch
+            if (result.status === 'success' || result.data) {
+                // Determine the correct data array (handle different API responses)
+                const data = result.data || result.purchases || [];
+                setInvoices(data);
+                
+                // Calculate simple stats based on the receipts
+                const total = data.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
+                setStats({
+                    totalSales: total,
+                    invoiceCount: data.length
+                });
             }
-
-            // Try API calls with improved error handling
-            console.log('📡 Making API calls...');
-            
-            const headers = {
-                'Content-Type': 'application/json',
-                ...(authToken && { Authorization: `Bearer ${authToken}` })
-            };
-            
-            // Use Promise.allSettled for better error handling
-            const [purchasesResult, wishlistResult, suggestionsResult] = await Promise.allSettled([
-                fetch('/api/user/purchases/recent', { headers }),
-                fetch('/api/user/wishlist', { headers }),
-                fetch('/api/user/suggestions', { headers })
-            ]);
-            
-            console.log('📊 API results:', {
-                purchases: purchasesResult.status,
-                wishlist: wishlistResult.status,
-                suggestions: suggestionsResult.status
-            });
-            
-            // Handle purchases
-            if (purchasesResult.status === 'fulfilled' && purchasesResult.value.ok) {
-                const purchasesData = await purchasesResult.value.json();
-                console.log('✅ Purchases data:', purchasesData);
-                setRecentPurchases(purchasesData.data || purchasesData.purchases || []);
-            } else {
-                console.log('⚠️ Using fallback purchases data');
-                setRecentPurchases([
-                    { _id: '1', plant: { name: 'Rose Plant', image: '/uploads/rose.jpg' }, quantity: 2, amount: 25.50, date: new Date().toISOString() },
-                    { _id: '2', plant: { name: 'Tulip Plant', image: '/uploads/tulip.jpg' }, quantity: 1, amount: 15.00, date: new Date().toISOString() }
-                ]);
-            }
-            
-            // Handle wishlist
-            if (wishlistResult.status === 'fulfilled' && wishlistResult.value.ok) {
-                const wishlistData = await wishlistResult.value.json();
-                console.log('✅ Wishlist data:', wishlistData);
-                setWishlist(wishlistData.data || wishlistData.wishlist || []);
-            } else {
-                console.log('⚠️ Using fallback wishlist data');
-                setWishlist([
-                    { _id: '1', name: 'Orchid', category: 'Flowering Plant', price: 45.00, image: '/uploads/orchid.jpg' },
-                    { _id: '2', name: 'Peace Lily', category: 'Air Purifier', price: 30.00, image: '/uploads/peace-lily.jpg' }
-                ]);
-            }
-            
-            // Handle suggestions  
-            if (suggestionsResult.status === 'fulfilled' && suggestionsResult.value.ok) {
-                const suggestionsData = await suggestionsResult.value.json();
-                console.log('✅ Suggestions data:', suggestionsData);
-                setPlantSuggestions(suggestionsData.data || suggestionsData.suggestions || []);
-            } else {
-                console.log('⚠️ Using fallback suggestions data');
-                setPlantSuggestions([
-                    { _id: '1', name: 'Sunflower', category: 'Flowering Plant', price: 8.50, image: '/uploads/sunflower.jpg' },
-                    { _id: '2', name: 'Lavender', category: 'Herb', price: 18.00, image: '/uploads/lavender.jpg' }
-                ]);
-            }
-            
-            console.log('✅ Dashboard data loaded successfully');
         } catch (error) {
-            console.error('🚨 Critical error in fetchUserData:', error);
-            
-            // Use fallback data on complete failure
-            setRecentPurchases([
-                { _id: '1', plant: { name: 'Rose Plant', image: '/uploads/rose.jpg' }, quantity: 2, amount: 25.50, date: new Date().toISOString() },
-                { _id: '2', plant: { name: 'Tulip Plant', image: '/uploads/tulip.jpg' }, quantity: 1, amount: 15.00, date: new Date().toISOString() }
-            ]);
-            setWishlist([
-                {
-                    _id: 1,
-                    name: 'Orchid',
-                    category: 'Flowering Plant',
-                    price: 45.00,
-                    image: '/uploads/orchid.jpg'
-                },
-                {
-                    _id: 2,
-                    name: 'Peace Lily',
-                    category: 'Air Purifier',
-                    price: 30.00,
-                    image: '/uploads/peace-lily.jpg'
-                }
-            ]);
-            setPlantSuggestions([
-                {
-                    _id: 1,
-                    name: 'Sunflower',
-                    category: 'Flowering Plant',
-                    price: 8.50,
-                    image: '/uploads/sunflower.jpg'
-                },
-                {
-                    _id: 2,
-                    name: 'Lavender',
-                    category: 'Herb',
-                    price: 18.00,
-                    image: '/uploads/lavender.jpg'
-                }
-            ]);
-            
-            if (error.status === 404) {
-                toast.error('API endpoints not found - using offline data');
-            } else {
-                toast.success('Using offline data');
-            }
+            console.error("Dashboard Load Error:", error);
+        } finally {
+            setLoading(false);
         }
     };
 
-    const quickActions = [
-        {
-            icon: <FaCamera className="text-green-600 text-2xl" />,
-            title: 'Identify Plant',
-            description: 'Take or upload a photo to identify plants',
-            action: () => navigate('/user/identify')
-        },
-        {
-            icon: <FaLeaf className="text-green-600 text-2xl" />,
-            title: 'Browse Plants',
-            description: 'Explore our plant collection',
-            action: () => navigate('/user/browse')
-        },
-        {
-            icon: <FaHistory className="text-green-600 text-2xl" />,
-            title: 'Purchase History',
-            description: 'View your past purchases',
-            action: () => navigate('/user/history')
-        },
-        {
-            icon: <FaHeart className="text-green-600 text-2xl" />,
-            title: 'Wishlist',
-            description: 'View and manage your wishlist',
-            action: () => navigate('/user/wishlist')
+    const handleViewPdf = (url) => {
+        if (url) {
+            // Ensure the URL is absolute or relative to root
+            window.open(url, '_blank');
+        } else {
+            alert("PDF not available for this invoice.");
         }
-    ];
+    };
+
+    if (loading) return (
+        <div className="min-h-screen flex items-center justify-center">
+            <div className="text-xl font-semibold text-green-700">Loading Dashboard...</div>
+        </div>
+    );
 
     return (
-        <div className="p-8">
-            <h1 className="text-2xl font-bold mb-6">Welcome to TreeTagAI</h1>
-
-            {/* Quick Actions */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                {quickActions.map((action, index) => (
-                    <div
-                        key={index}
-                        onClick={action.action}
-                        className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+        <div className="min-h-screen bg-gray-50 p-6 font-sans">
+            <div className="max-w-7xl mx-auto space-y-8">
+                
+                {/* 1. Header Section */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+                    <div>
+                        <h1 className="text-3xl font-bold text-gray-900">Hortus Dashboard</h1>
+                        <p className="text-gray-500 mt-1">Welcome back, {user?.fullName || user?.name || 'Partner'}</p>
+                    </div>
+                    <button 
+                        onClick={() => navigate('/user/cart')} // Navigates to Generate Receipt
+                        className="bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 shadow-md flex items-center gap-2 transition-transform hover:scale-105"
                     >
-                        <div className="flex items-center space-x-4">
-                            <div className="p-3 bg-green-50 rounded-full">
-                                {action.icon}
+                        <FaFileInvoiceDollar /> New Sale
+                    </button>
+                </div>
+
+                {/* 2. Stats Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Revenue Card */}
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
+                                <FaChartLine size={24} />
                             </div>
                             <div>
-                                <h3 className="font-semibold text-gray-900">{action.title}</h3>
-                                <p className="text-sm text-gray-500">{action.description}</p>
+                                <p className="text-sm text-gray-500">Total Revenue</p>
+                                <h3 className="text-2xl font-bold text-gray-900">₹{stats.totalSales.toFixed(2)}</h3>
                             </div>
                         </div>
                     </div>
-                ))}
-            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Recent Purchases */}
-                <div className="bg-white rounded-lg shadow p-6">
-                    <h2 className="text-lg font-semibold mb-4">Recent Purchases</h2>
-                    <div className="space-y-4">
-                        {recentPurchases.map((purchase) => (
-                            <div key={purchase._id} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
-                                <img
-                                    src={purchase.plant.image}
-                                    alt={purchase.plant.name}
-                                    className="w-16 h-16 rounded-full object-cover"
-                                />
-                                <div className="flex-1">
-                                    <h3 className="font-medium">{purchase.plant.name}</h3>
-                                    <p className="text-sm text-gray-500">
-                                        Purchased on {new Date(purchase.date).toLocaleDateString()}
-                                    </p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="font-semibold">₹{purchase.amount}</p>
-                                    <p className="text-sm text-gray-500">Qty: {purchase.quantity}</p>
-                                </div>
+                    {/* Invoice Count Card */}
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-green-50 text-green-600 rounded-lg">
+                                <FaLeaf size={24} />
                             </div>
-                        ))}
-                        {recentPurchases.length === 0 && (
-                            <p className="text-gray-500 text-center py-4">No recent purchases</p>
-                        )}
-                    </div>
-                </div>
-
-                {/* Wishlist Preview */}
-                <div className="bg-white rounded-lg shadow p-6">
-                    <h2 className="text-lg font-semibold mb-4">Your Wishlist</h2>
-                    <div className="space-y-4">
-                        {wishlist.map((item) => (
-                            <div key={item._id} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
-                                <img
-                                    src={item.image}
-                                    alt={item.name}
-                                    className="w-16 h-16 rounded-full object-cover"
-                                />
-                                <div className="flex-1">
-                                    <h3 className="font-medium">{item.name}</h3>
-                                    <p className="text-sm text-gray-500">{item.category}</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="font-semibold">₹{item.price}</p>
-                                    <button
-                                        className="text-sm text-green-600 hover:text-green-700"
-                                        onClick={() => navigate(`/user/plants/${item._id}`)}
-                                    >
-                                        View Details
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                        {wishlist.length === 0 && (
-                            <p className="text-gray-500 text-center py-4">Your wishlist is empty</p>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Plant Suggestions */}
-            <div className="mt-8">
-                <h2 className="text-lg font-semibold mb-4">Recommended for You</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {plantSuggestions.map((plant) => (
-                        <div
-                            key={plant._id}
-                            className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow"
-                        >
-                            <img
-                                src={plant.image}
-                                alt={plant.name}
-                                className="w-full h-48 object-cover"
-                            />
-                            <div className="p-4">
-                                <h3 className="font-medium">{plant.name}</h3>
-                                <p className="text-sm text-gray-500">{plant.category}</p>
-                                <div className="mt-2 flex justify-between items-center">
-                                    <p className="font-semibold">₹{plant.price}</p>
-                                    <button
-                                        onClick={() => navigate(`/user/plants/${plant._id}`)}
-                                        className="text-green-600 hover:text-green-700"
-                                    >
-                                        View Details
-                                    </button>
-                                </div>
+                            <div>
+                                <p className="text-sm text-gray-500">Invoices Issued</p>
+                                <h3 className="text-2xl font-bold text-gray-900">{stats.invoiceCount}</h3>
                             </div>
                         </div>
-                    ))}
+                    </div>
+
+                    {/* Plant ID Tool Card */}
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/user/identify')}>
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-purple-50 text-purple-600 rounded-lg">
+                                <FaSearch size={24} />
+                            </div>
+                            <div>
+                                <p className="text-sm text-gray-500">Plant ID Tool</p>
+                                <h3 className="text-lg font-bold text-purple-700">Scan New Plant →</h3>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+
+                {/* 3. Recent Invoices Table (Handles the 'undefined' error) */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                        <h2 className="text-lg font-bold text-gray-800">Recent Blockchain Invoices</h2>
+                    </div>
+                    
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-100 border-b border-gray-200">
+                                <tr>
+                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Invoice #</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Customer</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Amount</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 bg-white">
+                                {invoices.length > 0 ? invoices.map((invoice) => (
+                                    <tr key={invoice._id || invoice.id} className="hover:bg-gray-50 transition-colors">
+                                        <td className="px-6 py-4 font-mono text-sm text-gray-600">
+                                            {invoice.receiptNumber || 'PENDING'}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-gray-600">
+                                            {invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString() : 'N/A'}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm font-medium text-gray-800">
+                                            {invoice.customerName || 'Walk-in'}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm font-bold text-gray-900">
+                                            ₹{(invoice.totalAmount || 0).toFixed(2)}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                                                <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5"></span>
+                                                Minted
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <button 
+                                                onClick={() => handleViewPdf(invoice.pdfUrl)}
+                                                className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1 border px-3 py-1 rounded hover:bg-blue-50 transition-colors"
+                                            >
+                                                <FaDownload size={12} /> View PDF
+                                            </button>
+                                        </td>
+                                    </tr>
+                                )) : (
+                                    <tr>
+                                        <td colSpan="6" className="px-6 py-16 text-center text-gray-500 bg-white">
+                                            <div className="flex flex-col items-center">
+                                                <FaFileInvoiceDollar size={48} className="text-gray-300 mb-4" />
+                                                <p className="text-lg font-medium">No invoices generated yet</p>
+                                                <p className="text-sm">Identify a plant and create a sale to see it here.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
             </div>
         </div>
     );
-};
-
-export default UserDashboard;
+}
