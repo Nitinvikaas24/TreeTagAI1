@@ -1,62 +1,47 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from '@google/genai';
 import { SUPPORTED_LANGUAGES } from '../config/languages.js';
 
 export class TranslationService {
-    constructor() {
-        // Initialize Gemini with your existing key
-        this.ai = new GoogleGenAI({ apiKey: process.env.GEMMA_API_KEY });
-    }
+	constructor() {
+		const apiKey = process.env.GEMMA_API_KEY;
+		if (!apiKey) throw new Error('GEMMA_API_KEY is not set.');
+		this.model = new GoogleGenerativeAI({ apiKey }).getGenerativeModel({ model: 'gemini-2.5-flash' });
+	}
 
-    /**
-     * Translates a plant info object into the target language using AI.
-     * @param {Object} plantInfo - The object containing description, benefits, etc.
-     * @param {string} targetLang - The target language code (e.g., 'ta', 'hi')
-     */
-    async translatePlantInfo(plantInfo, targetLang) {
-        try {
-            // 1. Check if translation is needed
-            if (targetLang === 'en' || !plantInfo) {
-                return plantInfo;
-            }
+	async translatePlantInfo(plantInfo, targetLang) {
+		if (!plantInfo) throw new Error('plantInfo is required.');
+		if (!targetLang) throw new Error('targetLang is required.');
+		if (targetLang === 'en') return plantInfo;
 
-            // Get the language name (e.g., "Tamil")
-            const targetLangName = SUPPORTED_LANGUAGES[targetLang]?.name || targetLang;
+		const languageEntry = SUPPORTED_LANGUAGES.find(({ code }) => code === targetLang);
+		if (!languageEntry) throw new Error(`Unsupported language code: ${targetLang}`);
 
-            // 2. Construct the prompt for Gemini
-            const prompt = `
-            You are a professional agricultural translator.
-            Translate the values of the following JSON object into ${targetLangName}.
-            
-            Rules:
-            1. Keep the JSON keys exactly the same (e.g., "description", "benefits").
-            2. Translate the *values* to be natural for farmers in ${targetLangName}.
-            3. Keep scientific names (e.g., "Mangifera indica") in English/Latin.
-            4. Respond with ONLY the valid JSON object. Do not add markdown like \`\`\`json.
+		const prompt = [
+			`Translate the following JSON object into ${languageEntry.name}.`,
+			'Keep the JSON keys exactly the same and translate only the values.',
+			'Return valid JSON only without any commentary.',
+		].join(' ');
 
-            Input JSON:
-            ${JSON.stringify(plantInfo)}
-            `;
+		const result = await this.model.generateContent({
+			contents: [
+				{
+					role: 'user',
+					parts: [{ text: `${prompt}\n\n${JSON.stringify(plantInfo, null, 2)}` }],
+				},
+			],
+		});
 
-            // 3. Call AI
-            const response = await this.ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                contents: prompt,
-            });
+		const raw = result.response?.text?.() ?? result.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+		if (!raw) throw new Error('No translation received from the model.');
 
-            // 4. Clean and Parse Response
-            const cleanText = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
-            const translatedData = JSON.parse(cleanText);
+		try {
+			return JSON.parse(raw);
+		} catch (error) {
+			throw new Error('Model response was not valid JSON.');
+		}
+	}
 
-            return translatedData;
+	async getVerifiedTranslations() {}
 
-        } catch (error) {
-            console.error("AI Translation Error:", error);
-            // Fallback: Return original English info if translation fails
-            return plantInfo;
-        }
-    }
-
-    // These methods are kept to prevent errors in routes that might call them
-    async getVerifiedTranslations(sourceLang, targetLang, context) { return []; }
-    async addVerifiedTranslation(sourceText, translatedText, sourceLang, targetLang, context) { return {}; }
+	async addVerifiedTranslation() {}
 }
