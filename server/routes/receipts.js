@@ -4,11 +4,10 @@ import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// --- THE FIX ---
-// We now point directly to the Controller which has the Blockchain Logic
+// Create new receipt (Mint to Blockchain)
 router.post('/', protect, createReceipt);
 
-// We also add these so your Dashboard History works
+// Get History
 router.get('/', protect, getAllReceipts);
 router.get('/:id', protect, getReceipt);
 

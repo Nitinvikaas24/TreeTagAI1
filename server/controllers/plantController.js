@@ -1,80 +1,67 @@
-import Plant from '../models/plant.js'; // Assuming the model is named plant.js and exported correctly
-import mongoose from 'mongoose';
+import { Plant } from '../models/plant.js';
+import docClient from "../config/db.js"; // <--- 1. FIXED: Remove { TABLE_NAME }
+import { UpdateCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 
-// Controller function to get all plants (for Admin Dashboard)
+const TABLE_NAME = "Plantdb-dev";
+// Get all plants
 export const getAllPlants = async (req, res) => {
     try {
-        const plants = await Plant.find({});
+        const plants = await Plant.findAll();
         res.status(200).json(plants);
     } catch (error) {
         res.status(500).json({ message: 'Failed to retrieve plants: ' + error.message });
     }
 };
 
-// Controller function to add a new plant
+// Add plant
 export const addPlant = async (req, res) => {
-    // Note: We are assuming all required data (scientific_name, price_default, stock) is in req.body
-    const newPlant = new Plant(req.body);
     try {
-        // Validation check for duplicate scientific_name (handled by Mongoose schema but good practice)
-        await newPlant.save();
+        const newPlant = await Plant.create(req.body);
         res.status(201).json(newPlant);
     } catch (error) {
-        // Handle common errors like duplicate keys (code 11000)
-        if (error.code === 11000) {
-            return res.status(400).json({ message: 'A plant with this scientific name already exists.' });
-        }
         res.status(500).json({ message: 'Failed to add plant: ' + error.message });
     }
 };
 
-// Controller function to update an existing plant
+// Update plant
 export const updatePlant = async (req, res) => {
-    const { id } = req.params;
-    
-    // Check if the ID format is valid (avoids Mongoose casting error)
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: 'Invalid Plant ID format.' });
-    }
+    // Note: In our DynamoDB design, Scientific Name is the ID. 
+    // If 'id' param is the scientific_name, this works. 
+    // If 'id' is a random ID, we need to adjust. Assuming scientific_name here based on your model.
+    const { id } = req.params; // Expecting scientific_name here
 
     try {
-        const updatedPlant = await Plant.findByIdAndUpdate(
-            id,
-            req.body,
-            { new: true, runValidators: true } // { new: true } returns the updated document
-        );
+        const command = new UpdateCommand({
+            TableName: TABLE_NAME,
+            Key: { PK: `PLANT#${id}`, SK: 'DETAILS' },
+            UpdateExpression: "set price_default = :p, stock = :s",
+            ExpressionAttributeValues: {
+                ":p": req.body.price_default,
+                ":s": req.body.stock
+            },
+            ReturnValues: "ALL_NEW"
+        });
 
-        if (!updatedPlant) {
-            return res.status(404).json({ message: 'Plant not found for update.' });
-        }
-
-        res.status(200).json(updatedPlant);
+        const result = await docClient.send(command);
+        res.status(200).json(result.Attributes);
     } catch (error) {
         res.status(500).json({ message: 'Failed to update plant: ' + error.message });
     }
 };
 
-// Controller function to delete a plant
+// Delete plant
 export const deletePlant = async (req, res) => {
-    const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: 'Invalid Plant ID format.' });
-    }
+    const { id } = req.params; // Expecting scientific_name
 
     try {
-        const result = await Plant.findByIdAndDelete(id);
+        const command = new DeleteCommand({
+            TableName: TABLE_NAME,
+            Key: { PK: `PLANT#${id}`, SK: 'DETAILS' }
+        });
 
-        if (!result) {
-            return res.status(404).json({ message: 'Plant not found for deletion.' });
-        }
-
-        // Return the deleted plant object or a simple success message
-        res.status(200).json({ message: 'Plant successfully deleted.', deletedPlant: result });
+        await docClient.send(command);
+        res.status(200).json({ message: 'Plant successfully deleted.' });
     } catch (error) {
         res.status(500).json({ message: 'Failed to delete plant: ' + error.message });
     }
 };
-
-// Export all functions
-//export { getAllPlants, addPlant, updatePlant, deletePlant };

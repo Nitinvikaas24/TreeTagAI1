@@ -1,82 +1,100 @@
-import mongoose from 'mongoose';
+import { PutCommand, QueryCommand, UpdateCommand, DeleteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { docClient, TABLE_NAME } from "../config/db.js";
+import { v4 as uuidv4 } from 'uuid';
 
-const cropListingSchema = new mongoose.Schema({
-  officer: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+export const CropListing = {
+  create: async (data) => {
+    const id = uuidv4();
+    const timestamp = new Date().toISOString();
+
+    const item = {
+      PK: `CROP#${id}`,
+      SK: 'DETAILS',
+      
+      // GSI to find crops by Officer
+      GSI1PK: `OFFICER#${data.officerEmail}`,
+      GSI1SK: `DATE#${timestamp}`,
+
+      _id: id,
+      officerEmail: data.officerEmail, // Storing email
+      plantName: data.plantName,
+      scientificName: data.scientificName,
+      price: data.price,
+      priceSource: data.priceSource,
+      quantity: data.quantity || 1,
+      status: 'active',
+      images: data.images || [],
+      
+      identificationData: data.identificationData || {},
+      receiptData: data.receiptData || null,
+      metadata: data.metadata || {},
+
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+
+    await docClient.send(new PutCommand({
+      TableName: TABLE_NAME,
+      Item: item
+    }));
+
+    return item;
   },
-  plantName: {
-    type: String,
-    required: true,
-    trim: true
+
+  // Fetch all crops for an officer
+  findByOfficer: async (officerEmail) => {
+    const command = new QueryCommand({
+      TableName: TABLE_NAME,
+      IndexName: 'GSI1',
+      KeyConditionExpression: 'GSI1PK = :officer',
+      ExpressionAttributeValues: {
+        ':officer': `OFFICER#${officerEmail}`
+      }
+    });
+    const response = await docClient.send(command);
+    return response.Items;
   },
-  scientificName: {
-    type: String,
-    trim: true
+
+  findById: async (id) => {
+    const command = new GetCommand({
+      TableName: TABLE_NAME,
+      Key: { PK: `CROP#${id}`, SK: 'DETAILS' }
+    });
+    const response = await docClient.send(command);
+    return response.Item;
   },
-  price: {
-    type: Number,
-    required: true,
-    min: 0
+
+  update: async (id, updates) => {
+    // Construct Dynamic Update Expression
+    let updateExp = "set updatedAt = :u";
+    const expValues = { ":u": new Date().toISOString() };
+    const expNames = {};
+
+    Object.keys(updates).forEach((key, idx) => {
+      updateExp += `, #${key} = :val${idx}`;
+      expNames[`#${key}`] = key;
+      expValues[`:val${idx}`] = updates[key];
+    });
+
+    const command = new UpdateCommand({
+      TableName: TABLE_NAME,
+      Key: { PK: `CROP#${id}`, SK: 'DETAILS' },
+      UpdateExpression: updateExp,
+      ExpressionAttributeNames: expNames,
+      ExpressionAttributeValues: expValues,
+      ReturnValues: "ALL_NEW"
+    });
+
+    const response = await docClient.send(command);
+    return response.Attributes;
   },
-  priceSource: {
-    type: String,
-    enum: ['receipt', 'manual'],
-    required: true
-  },
-  images: [{
-    url: String,
-    filename: String
-  }],
-  identificationData: {
-    // Store the original plant identification result
-    apiResult: mongoose.Schema.Types.Mixed,
-    confidence: Number,
-    identificationService: String,
-    wasManualOverride: {
-      type: Boolean,
-      default: false
-    }
-  },
-  receiptData: {
-    filename: String,
-    extractedPrice: Number,
-    uploadDate: Date
-  },
-  status: {
-    type: String,
-    enum: ['active', 'inactive', 'sold'],
-    default: 'active'
-  },
-  quantity: {
-    type: Number,
-    default: 1,
-    min: 0
-  },
-  location: {
-    type: {
-      type: String,
-      enum: ['Point'],
-      default: 'Point'
-    },
-    coordinates: {
-      type: [Number]
-    }
-  },
-  metadata: {
-    category: String,
-    season: String,
-    growthStage: String,
-    notes: String
+
+  delete: async (id) => {
+    await docClient.send(new DeleteCommand({
+      TableName: TABLE_NAME,
+      Key: { PK: `CROP#${id}`, SK: 'DETAILS' }
+    }));
   }
-}, {
-  timestamps: true
-});
+};
 
-// Index for geospatial queries and text search
-cropListingSchema.index({ location: '2dsphere' });
-cropListingSchema.index({ plantName: 'text', scientificName: 'text' });
-cropListingSchema.index({ officer: 1, status: 1 });
-
-export default mongoose.model('CropListing', cropListingSchema);
+export default CropListing;

@@ -1,49 +1,39 @@
-import mongoose from 'mongoose';
+import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import docClient from "../config/db.js"; // <--- FIXED: Default import
 
-const userSchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: [true, 'Path `name` is required.'],
-    },
-    username: {
-      type: String,
-      required: [true, 'Path `username` is required.'],
-      unique: true,
-    },
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-    },
-    password: {
-      type: String,
-      required: true,
-    },
-    role: {
-      type: String,
-      enum: ['farmer', 'officer', 'admin'],
-      default: 'farmer',
-    },
-    
-    // --- THIS IS THE FIX ---
-    // We are adding the 'farmerId' field to the database model
-    farmerId: {
-      type: String,
-      unique: true,
-      sparse: true, // This allows 'null' values, so officers (who have no farmerId) don't cause an error
-    },
-    // --- END OF FIX ---
+// Define the table name here locally
+const TABLE_NAME = "Userdb-dev";
 
-    preferences: {
-      type: Object,
-      default: {},
-    },
+const User = {
+  // Create a new user (Farmer)
+  create: async (userData) => {
+    const params = {
+      TableName: TABLE_NAME,
+      Item: userData,
+    };
+    try {
+      await docClient.send(new PutCommand(params));
+      return userData;
+    } catch (error) {
+      throw error;
+    }
   },
-  {
-    timestamps: true, // Automatically adds createdAt and updatedAt
-  }
-);
 
-export default mongoose.model('User', userSchema);
+  // Find user by Phone Number (The new Primary Key)
+  findByPhoneNumber: async (phoneNumber) => {
+    const params = {
+      TableName: TABLE_NAME,
+      Key: {
+        phoneNumber: phoneNumber, // Direct lookup
+      },
+    };
+    try {
+      const result = await docClient.send(new GetCommand(params));
+      return result.Item;
+    } catch (error) {
+      throw error;
+    }
+  },
+};
+
+export default User;

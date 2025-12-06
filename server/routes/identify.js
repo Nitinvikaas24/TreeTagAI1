@@ -1,24 +1,18 @@
 import express from 'express';
 import multer from 'multer';
-import { identifyPlant } from '../services/plantNetService.js';
+// Import the controller we just updated
+import { identifyPlant } from '../controllers/identificationController.js';
+import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-// POST / - accepts a single image file in memory and returns mock identification result
-router.post('/', upload.single('image'), async (req, res) => {
-  try {
-    if (!req.file || !req.file.buffer) {
-      return res.status(400).json({ error: 'Image file is required' });
-    }
-
-    const result = await identifyPlant(req.file.buffer);
-    return res.json(result);
-  } catch (err) {
-    console.error('Identification route error:', err);
-    return res.status(500).json({ error: 'Identification failed' });
-  }
-});
+// POST / - accepts a single image file
+// We add 'protect' middleware optionally if you want to enforce login for history saving
+// But the controller handles missing user gracefully.
+// For now, let's keep it open but pass user info if token exists (handled by middleware if present in app.js)
+// If you want to force login: router.post('/', protect, upload.single('image'), identifyPlant);
+router.post('/', protect, upload.single('image'), identifyPlant);
 
 export default router;

@@ -1,71 +1,48 @@
-import mongoose from 'mongoose';
+import { PutCommand, QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { docClient, TABLE_NAME } from "../config/db.js";
+import { v4 as uuidv4 } from 'uuid';
 
-const transactionSchema = new mongoose.Schema({
-  farmer: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+export const Transaction = {
+  create: async (data) => {
+    const id = uuidv4();
+    const timestamp = new Date().toISOString();
+
+    const item = {
+      PK: `TX#${id}`,
+      SK: 'DETAILS',
+      
+      GSI1PK: `OFFICER#${data.officerEmail}`,
+      GSI1SK: `DATE#${timestamp}`,
+
+      _id: id,
+      officerEmail: data.officerEmail,
+      farmerEmail: data.farmerEmail,
+      cropListingId: data.cropListingId,
+      amount: data.amount,
+      status: data.status || 'completed',
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+
+    await docClient.send(new PutCommand({
+      TableName: TABLE_NAME,
+      Item: item
+    }));
+    return item;
   },
-  officer: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  cropListing: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'CropListing',
-    required: true
-  },
-  farmerIdentification: {
-    // Store the farmer's plant identification attempt
-    plantName: String,
-    confidence: Number,
-    identificationService: String,
-    uploadedImage: String
-  },
-  matchingProcess: {
-    exactMatch: Boolean,
-    fuzzyScore: Number,
-    suggestedCrops: [{
-      cropId: mongoose.Schema.Types.ObjectId,
-      similarity: Number,
-      plantName: String
-    }],
-    farmerConfirmed: Boolean,
-    confirmedCropId: mongoose.Schema.Types.ObjectId
-  },
-  transactionDetails: {
-    quantity: {
-      type: Number,
-      default: 1,
-      min: 1
-    },
-    unitPrice: Number,
-    totalAmount: Number,
-    paymentStatus: {
-      type: String,
-      enum: ['pending', 'completed', 'failed'],
-      default: 'pending'
-    }
-  },
-  receipt: {
-    pdfPath: String,
-    receiptNumber: String,
-    generatedAt: Date
-  },
-  status: {
-    type: String,
-    enum: ['pending', 'confirmed', 'completed', 'cancelled'],
-    default: 'pending'
+
+  findByOfficer: async (officerEmail) => {
+    const command = new QueryCommand({
+      TableName: TABLE_NAME,
+      IndexName: 'GSI1',
+      KeyConditionExpression: 'GSI1PK = :officer',
+      ExpressionAttributeValues: {
+        ':officer': `OFFICER#${officerEmail}`
+      }
+    });
+    const response = await docClient.send(command);
+    return response.Items;
   }
-}, {
-  timestamps: true
-});
+};
 
-// Indexes for efficient querying
-transactionSchema.index({ farmer: 1, createdAt: -1 });
-transactionSchema.index({ officer: 1, createdAt: -1 });
-transactionSchema.index({ status: 1 });
-transactionSchema.index({ 'receipt.receiptNumber': 1 });
-
-export default mongoose.model('Transaction', transactionSchema);
+export default Transaction;

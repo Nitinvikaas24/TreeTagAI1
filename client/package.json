@@ -10,10 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.943.0",
+    "@aws-sdk/lib-dynamodb": "^3.943.0",
     "axios": "^1.12.2",
+    "bcryptjs": "^3.0.3",
     "browser-image-compression": "^2.0.2",
     "chart.js": "^4.5.0",
     "date-fns": "^4.1.0",
+    "jsonwebtoken": "^9.0.3",
     "jwt-decode": "^4.0.0",
     "react": "^19.1.0",
     "react-chartjs-2": "^5.3.0",
@@ -24,6 +28,7 @@
     "react-router-dom": "^7.9.3",
     "react-toastify": "^11.0.5",
     "react-webcam": "^7.2.0",
+    "uuid": "^13.0.0",
     "workbox-cacheable-response": "^7.3.0",
     "workbox-core": "^7.3.0",
     "workbox-expiration": "^7.3.0",
