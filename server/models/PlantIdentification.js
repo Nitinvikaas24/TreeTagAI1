@@ -1,8 +1,7 @@
 import { PutCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import docClient from "../config/db.js"; // <--- FIXED: Default import (no curly braces)
+import docClient from "../config/db.js";
 import { v4 as uuidv4 } from 'uuid';
 
-// Define the specific table for Plants
 const TABLE_NAME = "Plantdb-dev"; 
 
 export const PlantIdentification = {
@@ -14,26 +13,16 @@ export const PlantIdentification = {
       PK: `PLANTID#${id}`,
       SK: 'DETAILS',
       
-      // Link to User (GSI1)
-      GSI1PK: `USER#${data.userEmail}`,
+      // Link to User via Phone Number
+      // GSI1PK = "USER#+919876543210"
+      GSI1PK: `USER#${data.userPhoneNumber}`, 
       GSI1SK: `DATE#${timestamp}`,
       
       _id: id,
-      userEmail: data.userEmail,
-      originalImage: data.originalImage,
-      identifiedPlant: {
-        scientificName: data.identifiedPlant?.scientificName,
-        commonName: data.identifiedPlant?.commonName,
-        probability: data.identifiedPlant?.probability,
-        subtype: data.identifiedPlant?.subtype,
-        translatedName: data.identifiedPlant?.translatedName || {}
-      },
-      apiResponse: data.apiResponse || {}, 
+      userPhoneNumber: data.userPhoneNumber, // <--- Storing phone number
+      identifiedPlant: data.identifiedPlant,
       status: data.status || 'pending',
-      error: data.error,
-      
-      createdAt: timestamp,
-      updatedAt: timestamp
+      createdAt: timestamp
     };
 
     await docClient.send(new PutCommand({
@@ -44,28 +33,16 @@ export const PlantIdentification = {
     return item;
   },
 
-  findById: async (id) => {
-    const command = new GetCommand({
-      TableName: TABLE_NAME,
-      Key: {
-        PK: `PLANTID#${id}`,
-        SK: 'DETAILS'
-      }
-    });
-    const response = await docClient.send(command);
-    return response.Item;
-  },
-
-  // Get history for a user
-  findByUserEmail: async (email) => {
+  // Get history by Phone Number
+  findByUserPhone: async (phoneNumber) => {
     const command = new QueryCommand({
       TableName: TABLE_NAME,
       IndexName: 'GSI1',
       KeyConditionExpression: 'GSI1PK = :user',
       ExpressionAttributeValues: {
-        ':user': `USER#${email}`
+        ':user': `USER#${phoneNumber}`
       },
-      ScanIndexForward: false // Show newest first
+      ScanIndexForward: false // Newest first
     });
     const response = await docClient.send(command);
     return response.Items;

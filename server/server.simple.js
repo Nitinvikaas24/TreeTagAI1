@@ -22,7 +22,12 @@ import plantsRouter from './routes/plants.js'; // Ensure this file exists
 import searchRouter from './routes/search.js';  // Ensure this file exists
 import userRouter from './routes/user.js';      // Ensure this file exists
 
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173', // Exact URL of your frontend
+  credentials: true,               // Allow cookies/tokens
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // Allow PDFs to be viewed

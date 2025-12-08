@@ -1,22 +1,15 @@
 import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import LanguageSelector from './LanguageSelector'; // <--- The new component
+import LanguageSelector from './LanguageSelector';
 
 const DashboardLayout = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
 
     const handleLanguageChange = (lang) => {
-        // Save preference to local storage so it persists
         localStorage.setItem('treetag-language', lang);
-        
-        // In a real app, you might trigger a context update here
-        // For now, we just log it. The Receipt generator will read this preference.
         console.log("Language switched to:", lang);
-        
-        // Optional: Reload to apply UI translations if you have them
-        // window.location.reload(); 
     };
 
     return (
@@ -28,7 +21,7 @@ const DashboardLayout = () => {
                     {/* Logo & Brand */}
                     <div 
                         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" 
-                        onClick={() => navigate('/user')}
+                        onClick={() => navigate(user?.role === 'officer' ? '/admin' : '/user')}
                     >
                         <span className="text-2xl">🌿</span>
                         <span className="text-xl font-bold text-green-800 tracking-tight">Hortus</span>
@@ -37,7 +30,7 @@ const DashboardLayout = () => {
                     {/* Right Side Controls */}
                     <div className="flex items-center gap-4">
                         
-                        {/* --- NEW: Language Selector --- */}
+                        {/* Language Selector */}
                         <div className="hidden sm:block w-32">
                             <LanguageSelector onLanguageChange={handleLanguageChange} />
                         </div>
@@ -46,15 +39,20 @@ const DashboardLayout = () => {
                         <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
                             <div className="text-right hidden md:block">
                                 <div className="text-sm font-medium text-gray-900">
-                                    {user?.fullName || user?.name || 'Farmer'}
+                                    {/* Display Name (Fallback to 'User' if missing) */}
+                                    {user?.name || user?.fullName || 'User'}
                                 </div>
                                 <div className="text-xs text-gray-500 capitalize">
-                                    {user?.role || 'User'}
+                                    {/* Display Role */}
+                                    {user?.role || 'Farmer'}
                                 </div>
                             </div>
                             
                             <button 
-                                onClick={logout}
+                                onClick={() => {
+                                    logout();
+                                    navigate('/login');
+                                }}
                                 className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
                             >
                                 Logout

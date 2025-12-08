@@ -1,86 +1,62 @@
 import * as plantNetService from "../services/plantNetService.js";
-import { PlantIdentification } from "../models/PlantIdentification.js"; // DynamoDB Model
+import PlantIdentification from "../models/PlantIdentification.js"; 
 
 export const identifyPlant = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: "Please upload an image",
-      });
+      return res.status(400).json({ success: false, message: "Please upload an image" });
     }
 
     // 1. Call PlantNet API
-    console.log("🔍 Using PlantNet for identification...");
-    const result = await new plantNetService().identifyPlant(req.file.buffer);
+    console.log("🔍 Identifying plant...");
+    const result = await new plantNetService.identifyPlant(req.file.buffer);
 
     if (!result.results?.length) {
-      return res.status(404).json({
-        success: false,
-        message: "No plant matches found",
-      });
+      return res.status(404).json({ success: false, message: "No plant matches found" });
     }
 
     const bestMatch = result.results[0];
     const confidence = Math.round(bestMatch.score * 100);
 
-    // 2. Prepare Data for Response & DB
     const identifiedData = {
       scientificName: bestMatch.species?.scientificName,
       commonName: bestMatch.species?.commonNames?.[0] || "Unknown",
       probability: confidence,
       subtype: bestMatch.species?.genus?.scientificName || "",
-      translatedName: {} // Placeholder for translation logic if added back
     };
 
-    // 3. Save to DynamoDB (History)
-    // We only save if the user is logged in (req.user exists)
-    if (req.user && req.user.email) {
+    // 2. Save to DynamoDB (Using Phone Number)
+    // We check for phoneNumber now, not email
+    if (req.user && req.user.phoneNumber) {
       try {
         await PlantIdentification.create({
-          userEmail: req.user.email,
-          originalImage: "memory_buffer", // In a real app, upload to S3 and save URL here
+          userPhoneNumber: req.user.phoneNumber, // <--- FIXED: Using phone number
+          originalImage: "image_buffer", 
           identifiedPlant: identifiedData,
-          apiResponse: result, // Store full raw data for debugging
+          apiResponse: result,
           status: 'completed'
         });
+        console.log("✅ Scan saved to history for:", req.user.phoneNumber);
       } catch (dbError) {
-        console.error("Warning: Failed to save identification history to DynamoDB", dbError);
-        // We continue even if saving fails, so the user still gets the result
+        console.error("⚠️ Failed to save history:", dbError.message);
       }
     }
 
-    // 4. Send Response
+    // 3. Send Response
     return res.status(200).json({
       success: true,
       data: {
-        bestMatch: {
-          ...identifiedData,
-          details: {
-            commonNames: { en: bestMatch.species?.commonNames || [] },
-            taxonomy: bestMatch.species?.genus ? { genus: bestMatch.species.genus } : {},
-          },
-        },
-        suggestions: result.results.map((item, index) => ({
-          rank: index + 1,
+        bestMatch: identifiedData,
+        suggestions: result.results.slice(0, 3).map(item => ({
           scientificName: item.species?.scientificName,
-          commonName: item.species?.commonNames?.[0] || "Unknown",
-          confidence: Math.round(item.score * 100),
-        })),
-        metadata: {
-          timestamp: new Date().toISOString(),
-          confidence: confidence,
-        },
-      },
-      message: `Plant identified successfully with ${confidence}% confidence`,
+          commonName: item.species?.commonNames?.[0],
+          confidence: Math.round(item.score * 100)
+        }))
+      }
     });
 
   } catch (error) {
-    console.error("❌ Plant identification error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Error identifying plant",
-      error: error.message,
-    });
+    console.error("❌ Identification error:", error);
+    return res.status(500).json({ success: false, message: "Error identifying plant" });
   }
 };
